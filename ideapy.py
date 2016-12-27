@@ -28,8 +28,6 @@ from typing import List, Dict, Union
 
 __author__ = 'Paweł Kacperski'
 __version__ = '0.1'
-
-
 class IdeaPy:
     _VERSION = '0.1'
     _LOG_SIGN = 'IDEAPY'
