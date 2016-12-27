@@ -29,7 +29,7 @@ Own usage
 
 import ideapy
 
-IdeaPy.setup_cherrypy()
+IdeaPy.setup_cherrypy()     #optional
 idea = IdeaPy()
 
 idea.start()
@@ -40,8 +40,10 @@ Advanced usage
 ----------------------------------
 import ideapy
 
-IdeaPy.setup_cherrypy()
+IdeaPy.setup_cherrypy()     #optional
 idea = IdeaPy()
+
+#change CherryPy config, like sessions, etc.
 
 #now add some virtual hosts
 
