@@ -8,7 +8,6 @@ $ python3 -m ideapy
 go to http://localhost:8888/
 """
 
-
 import sys
 import cherrypy
 import os
@@ -28,6 +27,9 @@ from typing import List, Dict, Union
 
 __author__ = 'Paweł Kacperski'
 __version__ = '0.1'
+__license__ = 'MIT'
+
+
 class IdeaPy:
     _VERSION = '0.1'
     _LOG_SIGN = 'IDEAPY'
