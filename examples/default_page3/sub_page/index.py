@@ -1,3 +1,3 @@
 import cherrypy
 
-cherrypy.response.body = bytes('Hello World from default_page3', 'utf8')
+cherrypy.response.body = bytes('Hello World from default_page', 'utf8')
