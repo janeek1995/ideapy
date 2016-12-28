@@ -27,13 +27,8 @@ from wsgiref.handlers import format_date_time
 from typing import List, Dict, Union
 
 
-__author__ = 'Paweł Kacperski'
-__version__ = '0.1.2'
-__license__ = 'MIT'
-
-
 class IdeaPy:
-    _VERSION = '0.1'
+    _VERSION = '0.1.3'
     _LOG_SIGN = 'IDEAPY'
     _PYTHON_MIN_VERSION = (3, 4)
     _CHERRYPY_MIN_VERSION = [8, 1]
@@ -51,7 +46,7 @@ class IdeaPy:
         self._servers = {}
         self._virtual_hosts = {}
         self._virtual_host_root = '/'
-        self._server_main_root_dir = self._clean_path(os.path.dirname(os.path.realpath(os.getcwd())) + os.path.sep)
+        self._server_main_root_dir = self._clean_path(os.path.realpath(os.getcwd()) + os.path.sep)
         self._server_name = socket.gethostname().lower()
         self._id = hex(id(self))
 
@@ -150,7 +145,7 @@ class IdeaPy:
         # self._init_cherrypy(unsubscribe)
 
         self._log('{version} initialized, _server_main_root_dir={_server_main_root_dir}, _server_name={_server_name}'.format(
-            version = __version__,
+            version = IdeaPy._VERSION,
             _server_main_root_dir = self._server_main_root_dir,
             _server_name = self._server_name
         ))
