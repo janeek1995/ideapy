@@ -4,7 +4,7 @@ readme = open('README.txt').read()
 
 setup(
     name='ideapy',
-    version='0.1.1',
+    version='0.1.2',
     author='Paweł Kacperski',
     author_email='screamingbox@gmail.com',
     description='IdeaPy is a simple WWW server built on top of CherryPy, with Python code execution feature',

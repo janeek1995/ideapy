@@ -28,7 +28,7 @@ from typing import List, Dict, Union
 
 
 __author__ = 'Paweł Kacperski'
-__version__ = '0.1'
+__version__ = '0.1.2'
 __license__ = 'MIT'
 
 
