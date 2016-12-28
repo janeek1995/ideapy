@@ -1,0 +1,8 @@
+README.txt
+ideapy.py
+setup.py
+ideapy.egg-info/PKG-INFO
+ideapy.egg-info/SOURCES.txt
+ideapy.egg-info/dependency_links.txt
+ideapy.egg-info/requires.txt
+ideapy.egg-info/top_level.txt

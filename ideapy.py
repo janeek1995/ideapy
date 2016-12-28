@@ -51,7 +51,7 @@ class IdeaPy:
         self._servers = {}
         self._virtual_hosts = {}
         self._virtual_host_root = '/'
-        self._server_main_root_dir = self._clean_path(os.path.dirname(os.path.realpath(sys.argv[0])) + os.path.sep)
+        self._server_main_root_dir = self._clean_path(os.path.dirname(os.path.realpath(os.getcwd())) + os.path.sep)
         self._server_name = socket.gethostname().lower()
         self._id = hex(id(self))
 
