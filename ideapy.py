@@ -6,6 +6,8 @@ IdeaPy is a simple WWW server built on top of CherryPy, with Python code executi
 $ python3 -m ideapy
 
 go to http://localhost:8888/
+
+Homepage: https://github.com/skazanyNaGlany/ideapy
 """
 
 import sys
