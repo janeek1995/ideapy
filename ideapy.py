@@ -20,6 +20,7 @@ import tempfile
 import fnmatch
 import socket
 import binascii
+import traceback
 
 from urllib.parse import urlparse
 from wsgiref.handlers import format_date_time
@@ -660,11 +661,15 @@ class IdeaPy:
 
         importlib.invalidate_caches()
 
-        imported_module = self._import_module_by_full_pathname(full_pathname)
+        try:
+            imported_module = self._import_module_by_full_pathname(full_pathname)
 
-        if hasattr(imported_module, 'stream') and callable(imported_module.stream):
-            cherrypy.response.stream = True
-            return imported_module.stream()
+            if hasattr(imported_module, 'stream') and callable(imported_module.stream):
+                cherrypy.response.stream = True
+                return imported_module.stream()
+        except SystemExit as x:
+            cherrypy.log(traceback.format_exc())
+            return bytes('', 'utf8')
 
         # HACK HACK HACK! due to CherryPy bug - don't run cherrypy.session.save() or cherrypy.session.release_lock()
         # CherryPy will call cherrypy.session.save() again at the end of the request
