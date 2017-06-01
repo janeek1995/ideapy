@@ -20,7 +20,7 @@ import tempfile
 import fnmatch
 import socket
 import binascii
-import traceback
+import resource
 
 from urllib.parse import urlparse
 from wsgiref.handlers import format_date_time
@@ -29,7 +29,10 @@ from typing import List, Dict, Union
 
 
 class IdeaPy:
-    _VERSION = '0.1.3'
+    DEBUG_MODE = True
+    RELOADER = True
+
+    _VERSION = '0.1.4'
     _LOG_SIGN = 'IDEAPY'
     _PYTHON_MIN_VERSION = (3, 4)
     _CHERRYPY_MIN_VERSION = [8, 1]
@@ -50,6 +53,8 @@ class IdeaPy:
         self._server_main_root_dir = self._clean_path(os.path.realpath(os.getcwd()) + os.path.sep)
         self._server_name = socket.gethostname().lower()
         self._id = hex(id(self))
+        self._supporting_modules = {}
+        self._pid = os.getpid()
 
         self._list_html_template = """
         <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
@@ -231,11 +236,11 @@ class IdeaPy:
         assert int(cherrypy_version[0]) >= IdeaPy._CHERRYPY_MIN_VERSION[0] and int(cherrypy_version[1]) >= IdeaPy._CHERRYPY_MIN_VERSION[1]
 
 
-    def _log(self, msg:str):
+    def _log(self, *objects):
         cherrypy.log('{log_sign} {_id} {msg}'.format(
             log_sign = self._LOG_SIGN,
             _id = self._id,
-            msg = msg
+            msg = ' '.join(objects)
         ))
 
 
@@ -391,7 +396,8 @@ class IdeaPy:
                          ssl_certificate:str = '',
                          ssl_private_key:str = '',
                          ssl_certificate_chain:str = '',
-                         opt_indexes:bool = True
+                         opt_indexes:bool = True,
+                         not_found_path:str = None
                          ) -> dict:
         if not listen_ips:
             listen_ips = ['0.0.0.0']
@@ -439,11 +445,12 @@ class IdeaPy:
                 'indexes' : opt_indexes
             },
             'is_default_server' : server_name == IdeaPy._DEFAULT_VIRTUAL_HOST_NAME,
-            'is_default_port' : isinstance(listen_port, str) and listen_port == '*'
+            'is_default_port' : isinstance(listen_port, str) and listen_port == '*',
+            'not_found_path' : not_found_path
         }
 
         self._virtual_hosts[main_key] = virtual_host
-        self._log('added virtual host document_root={document_root}, server_name={server_name}, listen_port={listen_port}, listen_list={listen_list}, network_locations={network_locations}, directory_index={directory_index}, index_ignore={index_ignore}, is_default_server={is_default_server}, is_default_port={is_default_port}'.format(
+        self._log('added virtual host document_root={document_root}, server_name={server_name}, listen_port={listen_port}, listen_list={listen_list}, network_locations={network_locations}, directory_index={directory_index}, index_ignore={index_ignore}, is_default_server={is_default_server}, is_default_port={is_default_port}, not_found_path={not_found_path}'.format(
             document_root = virtual_host['document_root'],
             server_name = virtual_host['server_name'],
             listen_port = str(listen_port),
@@ -452,7 +459,8 @@ class IdeaPy:
             directory_index = str(virtual_host['directory_index']),
             index_ignore = str(virtual_host['index_ignore']),
             is_default_server = virtual_host['is_default_server'],
-            is_default_port = virtual_host['is_default_port']
+            is_default_port = virtual_host['is_default_port'],
+            not_found_path = virtual_host['not_found_path']
         ))
 
         return virtual_host
@@ -645,13 +653,70 @@ class IdeaPy:
         return importlib.import_module(module_full_pathname)
 
 
+    def _is_readable(self, pathname:str) -> bool:
+        return os.path.exists(pathname) and os.access(pathname, os.R_OK)
+
+
+    def _reload_modules(self):
+        need_reload = False
+        for module_file_full_pathname in list(self._supporting_modules.keys()):
+            try:
+                if not self._is_readable(module_file_full_pathname):
+                    del self._supporting_modules[module_file_full_pathname]
+                    continue
+
+                if self._supporting_modules[module_file_full_pathname]['mtime'] != os.path.getmtime(module_file_full_pathname):
+                    self._log('changed', module_file_full_pathname)
+
+                    need_reload = True
+                    break
+            except: pass
+
+        if need_reload:
+            for module_file_full_pathname in list(self._supporting_modules.keys()):
+                self._log('reloading', module_file_full_pathname)
+
+                try:
+                    del sys.modules[self._supporting_modules[module_file_full_pathname]['module']]
+                except: pass
+
+            try:
+                self._supporting_modules.clear()
+            except: pass
+
+
+    def _collect_modules(self):
+        for module_name in list(sys.modules.keys()):
+            readable = False
+
+            module_file_full_pathname = module_name.replace('.', os.path.sep)
+            if self._is_readable(module_file_full_pathname):
+                #directory
+                readable = True
+            else:
+                module_file_full_pathname = module_name.replace('.', os.path.sep) + '.py'
+                if self._is_readable(module_file_full_pathname):
+                    #file
+                    readable = True
+
+            if readable and not module_file_full_pathname in self._supporting_modules:
+                self._log('supporting', module_file_full_pathname)
+
+                self._supporting_modules[module_file_full_pathname] = {
+                    'module' : module_name,
+                    'mtime' : os.path.getmtime(module_file_full_pathname)
+                }
+
+
+    def _print_debug_info(self):
+        peak_memory = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        self._log('peak memory usage', str(peak_memory))
+
+
     def _execute_python_file(self,
                              virtual_host:dict,
                              full_pathname:str,
                              pathname:str) -> Union[str, bytes]:
-        # if not self._is_script_allowed(server, pathname):
-        #     raise cherrypy.HTTPError(403, 'Forbidden')
-
         cherrypy.session.acquire_lock()
 
         cherrypy.response.headers['Content-Type'] = 'text/plain'
@@ -659,21 +724,24 @@ class IdeaPy:
         cherrypy.response.headers['Pragma'] = 'no-cache'
         cherrypy.response.headers['Expires'] = '0'
 
-        importlib.invalidate_caches()
+        if self.RELOADER:
+            importlib.invalidate_caches()
+            self._reload_modules()
 
-        try:
-            imported_module = self._import_module_by_full_pathname(full_pathname)
+        if self.DEBUG_MODE:
+            self._log('executing', full_pathname)
 
-            if hasattr(imported_module, 'stream') and callable(imported_module.stream):
-                cherrypy.response.stream = True
-                return imported_module.stream()
-        except SystemExit as x:
-            cherrypy.log(traceback.format_exc())
-            return bytes('', 'utf8')
+        exec(open(full_pathname).read(), globals())
+
+        if self.RELOADER:
+            self._collect_modules()
+
+        if self.DEBUG_MODE:
+            self._print_debug_info()
 
         # HACK HACK HACK! due to CherryPy bug - don't run cherrypy.session.save() or cherrypy.session.release_lock()
         # CherryPy will call cherrypy.session.save() again at the end of the request
-        # and with unlocked session (cherrypy.session.locked=False after save()) it will raise error
+        # and with unlocked session (cherrypy.session.locked=False after save()) will raise error
 
         return cherrypy.response.body
 
@@ -693,6 +761,9 @@ class IdeaPy:
         except:
             cherrypy.response.status = '500 Internal Server Error'
             return bytes('', 'utf8')
+
+        if self.DEBUG_MODE:
+            self._log('streaming', full_pathname, content_type)
 
         cherrypy.response.headers['Content-Type'] = content_type
         cherrypy.response.headers['Cache-Control'] = 'max-age=86400'            #cache for 24h
@@ -804,7 +875,7 @@ class IdeaPy:
         serve file or directory listing by self._server_root_dir + server.x_document_root + pathname
         """
         #concatenate paths and replace duplicated slashes, like // to /
-        full_pathname = self._clean_path(self._server_main_root_dir + virtual_host['document_root'] + pathname)
+        full_pathname = os.path.realpath(self._clean_path(self._server_main_root_dir + virtual_host['document_root'] + pathname))
 
         if os.path.isfile(full_pathname):
             return self._serve_file(virtual_host, full_pathname, pathname)
@@ -812,6 +883,20 @@ class IdeaPy:
             return self._serve_directory(virtual_host, full_pathname, pathname)
         elif pathname == os.path.sep:
             return self._serve_directory(virtual_host, full_pathname, pathname)
+
+        # print(virtual_host)
+
+        #not found? try to "redirect" call to not_found_path if set
+        if virtual_host['not_found_path']:
+            full_pathname = self._clean_path(self._server_main_root_dir + virtual_host['not_found_path'])
+            # print(full_pathname)
+
+            if os.path.isfile(full_pathname):
+                return self._serve_file(virtual_host, full_pathname, pathname)
+            elif os.path.isdir(full_pathname):
+                return self._serve_directory(virtual_host, full_pathname, pathname)
+            elif pathname == os.path.sep:
+                return self._serve_directory(virtual_host, full_pathname, pathname)
 
         raise cherrypy.NotFound()
 
@@ -918,3 +1003,5 @@ if __name__ == '__main__':
     idea = IdeaPy()
     idea.start()
     idea.block()
+
+
