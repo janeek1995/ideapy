@@ -29,10 +29,10 @@ from typing import List, Dict, Union
 
 
 class IdeaPy:
-    DEBUG_MODE = True
+    DEBUG_MODE = False
     RELOADER = True
 
-    _VERSION = '0.1.4'
+    _VERSION = '0.1.6'
     _LOG_SIGN = 'IDEAPY'
     _PYTHON_MIN_VERSION = (3, 4)
     _CHERRYPY_MIN_VERSION = [8, 1]
@@ -1003,5 +1003,4 @@ if __name__ == '__main__':
     idea = IdeaPy()
     idea.start()
     idea.block()
-
 
