@@ -5,7 +5,7 @@
 IdeaPy is a simple WWW server built on top of CherryPy, with Python code execution feature. Example usage:
 $ python3 -m ideapy
 
-go to http://localhost:8888/
+go to http://localhost:8080/
 
 Homepage: https://github.com/skazanyNaGlany/ideapy
 """
@@ -21,16 +21,21 @@ import fnmatch
 import socket
 import binascii
 import resource
+import builtins
+import time
+import json
+import pprint
 
 from urllib.parse import urlparse
 from wsgiref.handlers import format_date_time
-
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Optional
+from collections import OrderedDict
 
 
 class IdeaPy:
     DEBUG_MODE = False
     RELOADER = True
+    RELOADER_INTERVAL = 3
 
     _VERSION = '0.1.6'
     _LOG_SIGN = 'IDEAPY'
@@ -38,6 +43,8 @@ class IdeaPy:
     _CHERRYPY_MIN_VERSION = [8, 1]
 
     _DEFAULT_VIRTUAL_HOST_NAME = '_default_'
+
+    _CACHED_SCOPES_TOTAL = 1024
 
     """
     :type _servers: Dict[str, cherrypy._cpserver.Server]
@@ -55,6 +62,11 @@ class IdeaPy:
         self._id = hex(id(self))
         self._supporting_modules = {}
         self._pid = os.getpid()
+        self._org___import__ = None
+        self._org_import_module = None
+        self._last_reloaded = int(time.time())
+        self._cached_scopes = {}
+        # self._profiler = cProfile.Profile()
 
         self._list_html_template = """
         <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
@@ -148,13 +160,28 @@ class IdeaPy:
             }
         }
 
-        # self._init_cherrypy(unsubscribe)
-
         self._log('{version} initialized, _server_main_root_dir={_server_main_root_dir}, _server_name={_server_name}'.format(
             version = IdeaPy._VERSION,
             _server_main_root_dir = self._server_main_root_dir,
             _server_name = self._server_name
         ))
+
+        self._parse_argv()
+        self._log('ready, waiting for start()')
+
+
+    def _parse_argv(self):
+        if len(sys.argv) <= 1:
+            self._log('no command line arguments')
+            return
+
+        self._log('parsing command line arguments')
+
+        virtual_hosts = json.loads(sys.argv[1])
+        for ivirtual_host in virtual_hosts:
+            self.add_virtual_host(**ivirtual_host)
+
+        self._log('found', str(len(virtual_hosts)), 'virtual host(s)')
 
 
     @staticmethod
@@ -176,28 +203,6 @@ class IdeaPy:
             # 'engine.timeout_monitor.on': False,
 
             'environment': 'production'
-        })
-
-        if unsubscribe:
-            cherrypy.server.unsubscribe()
-
-
-    def _init_cherrypy(self, unsubscribe:bool):
-        cherrypy.config.update({
-            'tools.sessions.on': True,
-            'tools.sessions.storage_class': cherrypy.lib.sessions.FileSession,
-            'tools.sessions.storage_path': tempfile.gettempdir(),
-            'tools.sessions.timeout': 60,
-            # we will lock/unlock session manually by cherrypy.session.acquire_lock() and cherrypy.session.release_lock()
-            # see http://docs.cherrypy.org/en/latest/pkg/cherrypy.lib.html#locking-sessions
-            # 'tools.sessions.locking': 'early',
-            'tools.sessions.locking': 'explicit',
-
-            'log.screen': True,
-            'engine.autoreload.on': True,
-
-            # #disable response timeout monitor
-            # 'engine.timeout_monitor.on': False,
         })
 
         if unsubscribe:
@@ -239,19 +244,12 @@ class IdeaPy:
     def _log(self, *objects):
         cherrypy.log('{log_sign} {_id} {msg}'.format(
             log_sign = self._LOG_SIGN,
-            _id = self._id,
+            _id = self._id if self.DEBUG_MODE else '',
             msg = ' '.join(objects)
         ))
 
 
-    def set_server_name(self, hostname:str):
-        assert isinstance(hostname, str) and str != '', 'hostname must be non-empty string (valid domain name)'
-
-        self._server_name = hostname
-        self._log('using _server_name={hostname}'.format(hostname = self._server_name))
-
-
-    def add_server(self,
+    def _add_server(self,
                    port:int,
                    ip:str = '127.0.0.1',
                    ssl_certificate:str = '',
@@ -296,7 +294,9 @@ class IdeaPy:
         server.subscribe()
 
         self._servers[main_key] = server
-        self._log('added server {key}'.format(key = main_key))
+
+        if self.DEBUG_MODE:
+            self._log('added server {key}'.format(key = main_key))
 
         return server
 
@@ -316,7 +316,7 @@ class IdeaPy:
 
 
     def _check_add_virtual_host_args(self,
-                                     document_root:str,
+                                     document_roots:List[str],
                                      server_name:str,
                                      listen_port:Union[int, str],
                                      listen_ips:List[str],
@@ -326,9 +326,13 @@ class IdeaPy:
                                      ssl_certificate,
                                      ssl_private_key,
                                      ssl_certificate_chain:str,
-                                     opt_indexes:bool):
-        assert isinstance(document_root, str), 'document_root must be a string'
-        assert document_root != '', 'document_root must be non-empty (full pathname)'
+                                     opt_indexes:bool,
+                                     not_found_document_root:str = None):
+        assert isinstance(document_roots, list), 'document_roots must be a list of strings'
+        assert document_roots, 'document_roots must be non-empty (full pathname)'
+
+        for idocument_root in document_roots:
+            assert isinstance(idocument_root, str), 'document_roots must be a list of strings'
 
         assert isinstance(server_name, str), 'server_name must be a string, got={server_name}'.format(server_name = str(server_name))
         assert server_name != '', 'server_name must be non-empty (domain name)'
@@ -367,6 +371,9 @@ class IdeaPy:
         assert isinstance(ssl_certificate_chain, str)
         assert isinstance(opt_indexes, bool)
 
+        if not_found_document_root:
+            assert isinstance(not_found_document_root, str), 'not_found_document_root must be a string, got={not_found_document_root}'.format(not_found_document_root = str(not_found_document_root))
+
 
     def _check_remove_virtual_host_args(self, server_name:str, listen_port:int):
         assert isinstance(server_name, str), 'server_name must be a non-empty string, got={server_name}'.format(server_name = server_name)
@@ -385,20 +392,54 @@ class IdeaPy:
         self._check_remove_virtual_host_args(server_name, listen_port)
 
 
+    def _locate_file(self, pathname:str, virtual_host:dict, throw_exception:bool = False) -> dict:
+        result = {
+            'pathname' : pathname,
+            'real_pathname' : '',
+            'type' : '',
+            'exists' : False
+        }
+
+        if pathname.startswith('.' + os.path.sep):
+            pathname = pathname[2:]
+
+        for idocument_root in virtual_host['document_roots']:
+            real_pathname = os.path.realpath(self._clean_path(self._server_main_root_dir + os.path.sep + idocument_root + os.path.sep + pathname))
+
+            if os.path.exists(real_pathname):
+                result['real_pathname'] = real_pathname
+                result['exists'] = True
+
+                if os.path.isfile(real_pathname):
+                    result['type'] = 'file'
+                elif os.path.isdir(real_pathname):
+                    result['type'] = 'dir'
+
+                break
+
+        if not result['exists'] and throw_exception:
+            raise FileNotFoundError(pathname)
+
+        return result
+
+
     def add_virtual_host(self,
-                         document_root:str = '/',
-                         server_name:str = '',
-                         listen_port:Union[int, str] = 8888,
-                         listen_ips:List[str] = None,
-                         server_aliases:List[str] = None,
-                         directory_index:List[str] = None,
-                         index_ignore:List[str] = None,
+                         document_roots:List[str] = None,           # type: List[str] = ['/index', '/']
+                         server_name:str = '',                      # type: str = self._server_name
+                         listen_port:Union[int, str] = 8080,
+                         listen_ips:List[str] = None,               # type: List[str] = ['0.0.0.0']
+                         server_aliases:List[str] = None,           # type: List[str] = ['localhost']
+                         directory_index:List[str] = None,          # type: List[str] = ['index.py', 'index.html']
+                         index_ignore:List[str] = None,             # type: List[str] = ['__pycache__', '*.pyc', '*.key', '*.crt', '*.pem', '.*']
                          ssl_certificate:str = '',
                          ssl_private_key:str = '',
                          ssl_certificate_chain:str = '',
-                         opt_indexes:bool = True,
-                         not_found_path:str = None
+                         opt_indexes:bool = False,
+                         not_found_document_root:str = '/'
                          ) -> dict:
+        #setup defaults
+        if not document_roots:
+            document_roots = ['/index', '/']
         if not listen_ips:
             listen_ips = ['0.0.0.0']
         if directory_index is None:
@@ -412,11 +453,13 @@ class IdeaPy:
 
         server_name = server_name.lower()
 
+        #virtual host name (host:port)
         main_key = server_name + ':' + str(listen_port)
         assert not main_key in self._virtual_hosts, 'virtual host {key} already exists'.format(key = main_key)
 
+        #validate args
         self._check_add_virtual_host_args(
-            document_root,
+            document_roots,
             server_name,
             listen_port,
             listen_ips,
@@ -426,42 +469,40 @@ class IdeaPy:
             ssl_certificate,
             ssl_private_key,
             ssl_certificate_chain,
-            opt_indexes
+            opt_indexes,
+            not_found_document_root
         )
 
         #collect listen IPs and merge with listen port (if port does not exists in IP)
-        listen_list = self._add_servers(listen_ips, listen_port, ssl_certificate, ssl_private_key, ssl_certificate_chain)
         network_locations = self._build_network_locations(server_name, listen_port, server_aliases)
 
-        virtual_host = {
-            'document_root' : document_root,
-            'server_name' : server_name,
-            'listen_port' : listen_port,
-            'listen_list' : listen_list,
-            'network_locations' : network_locations,
-            'directory_index' : directory_index,
-            'index_ignore' : index_ignore,
-            'options' : {
-                'indexes' : opt_indexes
-            },
-            'is_default_server' : server_name == IdeaPy._DEFAULT_VIRTUAL_HOST_NAME,
-            'is_default_port' : isinstance(listen_port, str) and listen_port == '*',
-            'not_found_path' : not_found_path
-        }
+        virtual_host = OrderedDict()
+        virtual_host['document_roots'] = document_roots
+        virtual_host['server_name'] = server_name
+        virtual_host['listen_port'] = listen_port
+        virtual_host['directory_index'] = directory_index
+        virtual_host['index_ignore'] = index_ignore
+        virtual_host['options'] = {'indexes' : opt_indexes}
+        virtual_host['is_default_server'] = server_name == IdeaPy._DEFAULT_VIRTUAL_HOST_NAME
+        virtual_host['is_default_port'] = isinstance(listen_port, str) and listen_port == '*'
+        virtual_host['network_locations'] = network_locations
+        virtual_host['ssl_certificate'] = self._locate_file(ssl_certificate, virtual_host, True)['real_pathname'] if ssl_certificate else ''
+        virtual_host['ssl_private_key'] = self._locate_file(ssl_private_key, virtual_host, True)['real_pathname'] if ssl_private_key else ''
+        virtual_host['ssl_certificate_chain'] = self._locate_file(ssl_certificate_chain, virtual_host)['real_pathname'] if ssl_certificate_chain else ''
+        virtual_host['not_found_document_root'] = not_found_document_root
 
-        self._virtual_hosts[main_key] = virtual_host
-        self._log('added virtual host document_root={document_root}, server_name={server_name}, listen_port={listen_port}, listen_list={listen_list}, network_locations={network_locations}, directory_index={directory_index}, index_ignore={index_ignore}, is_default_server={is_default_server}, is_default_port={is_default_port}, not_found_path={not_found_path}'.format(
-            document_root = virtual_host['document_root'],
-            server_name = virtual_host['server_name'],
-            listen_port = str(listen_port),
-            listen_list = str(virtual_host['listen_list']),
-            network_locations = str(virtual_host['network_locations']),
-            directory_index = str(virtual_host['directory_index']),
-            index_ignore = str(virtual_host['index_ignore']),
-            is_default_server = virtual_host['is_default_server'],
-            is_default_port = virtual_host['is_default_port'],
-            not_found_path = virtual_host['not_found_path']
-        ))
+        #subscribe servers (ip:port)
+        self._add_servers(
+            listen_ips,
+            listen_port,
+            virtual_host['ssl_certificate'],
+            virtual_host['ssl_private_key'],
+            virtual_host['ssl_certificate_chain']
+        )
+
+        self._virtual_hosts[main_key] = dict(virtual_host)
+
+        self._log('added virtual host', main_key, os.linesep, pprint.pformat(virtual_host))
 
         return virtual_host
 
@@ -517,7 +558,7 @@ class IdeaPy:
                 ip = parsed_ip['ip']
                 port = parsed_ip['port']
 
-            server = self.add_server(port, ip, ssl_certificate, ssl_private_key, ssl_certificate_chain)
+            server = self._add_server(port, ip, ssl_certificate, ssl_private_key, ssl_certificate_chain)
             if server:
                 listen_list.append(server._socket_host + ':' + str(server.socket_port))
             else:
@@ -525,6 +566,13 @@ class IdeaPy:
                 listen_list.append(ip + ':' + str(port))
 
         return listen_list
+
+
+    def _remove_prefix(self, text:str, prefix:str) -> str:
+        if text.startswith(prefix):
+            return text[len(prefix):]
+
+        return text
 
 
     def _replace_last(self, source_string:str, replace_what:str, replace_with:str) -> str:
@@ -573,14 +621,27 @@ class IdeaPy:
         cherrypy.response.headers['Pragma'] = 'no-cache'
         cherrypy.response.headers['Expires'] = '0'
 
-        if pathname == virtual_host['document_root']:
-            #server's root
-            parent_pathname = os.path.sep
-        else:
-            # parent_pathname = os.path.split(os.path.abspath(pathname))[0].replace(self._server_main_root_dir, '', 1)
+        parent_pathname = None
+        for idocument_root in virtual_host['document_roots']:
+            if pathname == idocument_root:
+                # server's root
+                parent_pathname = idocument_root
+                break
+
+        #TODO test
+        if not parent_pathname:
             parent_pathname = os.path.split(os.path.abspath(pathname))[0]
             if not parent_pathname:
                 parent_pathname = os.path.sep
+
+        # if pathname == virtual_host['document_root']:
+        #     #server's root
+        #     parent_pathname = os.path.sep
+        # else:
+        #     # parent_pathname = os.path.split(os.path.abspath(pathname))[0].replace(self._server_main_root_dir, '', 1)
+        #     parent_pathname = os.path.split(os.path.abspath(pathname))[0]
+        #     if not parent_pathname:
+        #         parent_pathname = os.path.sep
 
         entries = []
         for entry_pathname in os.listdir(full_pathname):
@@ -623,45 +684,17 @@ class IdeaPy:
         return html
 
 
-    def _filename_to_module_path(self, module_pathname:str) -> str:
-        basename, ext = os.path.splitext(os.path.basename(module_pathname))
-        filename = os.path.sep + basename + ext
-
-        server_main_root_dir = self._server_main_root_dir
-        if server_main_root_dir.startswith(os.path.sep):
-            server_main_root_dir = server_main_root_dir[1:]
-
-        #build module path short
-        # 1.remove server main root dir from result
-        # 2.remove extension like .py from result
-        # 3.replace directory separator with dot (eg. \\ or // to .)
-        return module_pathname.replace(server_main_root_dir, '').replace(filename, os.path.sep + basename)[1:].replace(os.path.sep, '.')
-
-
-    def _import_module_by_full_pathname(self, module_path:str, reload:bool = True):
-        module_full_pathname = self._filename_to_module_path(module_path)
-
-        if module_full_pathname in sys.modules:
-            #already imported
-            imported_module = sys.modules[module_full_pathname]
-
-            if reload:
-                importlib.reload(imported_module)
-
-            return imported_module
-
-        return importlib.import_module(module_full_pathname)
-
-
-    def _is_readable(self, pathname:str) -> bool:
-        return os.path.exists(pathname) and os.access(pathname, os.R_OK)
-
-
     def _reload_modules(self):
+        now = int(time.time())
+        if now - self._last_reloaded <= self.RELOADER_INTERVAL:
+            return
+
+        self._last_reloaded = now
+
         need_reload = False
         for module_file_full_pathname in list(self._supporting_modules.keys()):
             try:
-                if not self._is_readable(module_file_full_pathname):
+                if not os.path.exists(module_file_full_pathname):
                     del self._supporting_modules[module_file_full_pathname]
                     continue
 
@@ -674,7 +707,8 @@ class IdeaPy:
 
         if need_reload:
             for module_file_full_pathname in list(self._supporting_modules.keys()):
-                self._log('reloading', module_file_full_pathname)
+                if self.DEBUG_MODE:
+                    self._log('reloading', module_file_full_pathname)
 
                 try:
                     del sys.modules[self._supporting_modules[module_file_full_pathname]['module']]
@@ -690,17 +724,18 @@ class IdeaPy:
             readable = False
 
             module_file_full_pathname = module_name.replace('.', os.path.sep)
-            if self._is_readable(module_file_full_pathname):
+            if os.path.exists(module_file_full_pathname):
                 #directory
                 readable = True
             else:
                 module_file_full_pathname = module_name.replace('.', os.path.sep) + '.py'
-                if self._is_readable(module_file_full_pathname):
+                if os.path.exists(module_file_full_pathname):
                     #file
                     readable = True
 
             if readable and not module_file_full_pathname in self._supporting_modules:
-                self._log('supporting', module_file_full_pathname)
+                if self.DEBUG_MODE:
+                    self._log('supporting', module_file_full_pathname)
 
                 self._supporting_modules[module_file_full_pathname] = {
                     'module' : module_name,
@@ -713,10 +748,70 @@ class IdeaPy:
         self._log('peak memory usage', str(peak_memory))
 
 
+    def _pathname_to_module(self, pathname:str) -> str:
+        if pathname.endswith('.py'):
+            return self._replace_last(pathname.replace(os.path.sep, '.'), '.py', '')
+        else:
+            return pathname.replace(os.path.sep, '.')
+
+
+    def _module_to_pathname(self, module_name:str) -> str:
+        pathname = module_name.replace('.', os.path.sep)
+        if os.path.exists(pathname):
+            return pathname
+        else:
+            return pathname + '.py'
+
+
+    def _module_to_parent(self, module_name:str) -> str:
+        parts = module_name.split('.')
+        if parts:
+            parts.pop()
+            return '.'.join(parts)
+
+        return module_name
+
+
+    def _build_scope(self, pathname:str, full_pathname:str) -> dict:
+        try:
+            if full_pathname in self._cached_scopes:
+                return self._cached_scopes[full_pathname]
+        except: pass
+
+        short_pathname = self._remove_prefix(full_pathname, self._server_main_root_dir)
+        module_name = self._pathname_to_module(short_pathname)
+        parent_module_name = self._module_to_parent(module_name)
+
+        scope_data = {
+            '__builtins__': {
+                '__import__': self._my__import__
+            },
+            '____ideapy____': self,
+            '____ideapy_file____': pathname,
+            '____ideapy_module____': module_name,
+            '____ideapy_module_parent____': parent_module_name,
+            '____ideapy_file_full_pathname____': full_pathname,
+            '____ideapy_file_short_pathname____': short_pathname,
+            '____ideapy_file_full_dirname____': os.path.dirname(full_pathname),
+            '____ideapy_file_short_dirname____': os.path.dirname(short_pathname)
+        }
+
+        try:
+            if len(self._cached_scopes) >= self._CACHED_SCOPES_TOTAL:
+                self._cached_scopes.clear()
+        except: pass
+
+        self._cached_scopes[full_pathname] = scope_data
+
+        return scope_data
+
+
     def _execute_python_file(self,
                              virtual_host:dict,
                              full_pathname:str,
                              pathname:str) -> Union[str, bytes]:
+        full_pathname = os.path.realpath(full_pathname)
+
         cherrypy.session.acquire_lock()
 
         cherrypy.response.headers['Content-Type'] = 'text/plain'
@@ -725,25 +820,49 @@ class IdeaPy:
         cherrypy.response.headers['Expires'] = '0'
 
         if self.RELOADER:
-            importlib.invalidate_caches()
             self._reload_modules()
 
         if self.DEBUG_MODE:
             self._log('executing', full_pathname)
 
-        exec(open(full_pathname).read(), globals())
+        cherrypy.response.____ideapy_scope____ = self._build_scope(pathname, full_pathname)
 
-        if self.RELOADER:
-            self._collect_modules()
+        try:
+            _locals = locals()
 
-        if self.DEBUG_MODE:
-            self._print_debug_info()
+            # inject __file__ so the interpreter will know which file is executing currently
+            _locals['__file__'] = full_pathname
 
-        # HACK HACK HACK! due to CherryPy bug - don't run cherrypy.session.save() or cherrypy.session.release_lock()
-        # CherryPy will call cherrypy.session.save() again at the end of the request
-        # and with unlocked session (cherrypy.session.locked=False after save()) will raise error
+            # exec(open(full_pathname).read(), locals(), locals())
+            exec(open(full_pathname).read(), _locals, _locals)
+        except BaseException as x:
+            raise x
+        finally:
+            if self.RELOADER:
+                self._collect_modules()
+
+            if self.DEBUG_MODE:
+                self._print_debug_info()
 
         return cherrypy.response.body
+
+
+    def _profiler_to_file(self, pathname:str):
+        org_stdout = sys.stdout
+        sys.stdout = open(pathname, 'w')
+
+        self._profiler.print_stats(sort='time')
+
+        sys.stdout = org_stdout
+
+
+    def _guess_file_mime_type(self, pathname:str) -> str:
+        content_type = mimetypes.guess_type(pathname)[0]
+        if not content_type:
+            #to avoid None
+            content_type = ''
+
+        return content_type
 
 
     def _stream_binary_file(self,
@@ -753,7 +872,7 @@ class IdeaPy:
         """
         here comes the magic
         """
-        content_type = mimetypes.guess_type(full_pathname)[0]
+        content_type = self._guess_file_mime_type(full_pathname)
 
         try:
             size = os.path.getsize(full_pathname)
@@ -846,10 +965,9 @@ class IdeaPy:
                     virtual_host:dict,
                     full_pathname:str,
                     pathname:str):
-        content_type = mimetypes.guess_type(full_pathname)[0]
-        # if content_type == 'text/x-python' and not virtual_host.x_view_py_code:
+        content_type = self._guess_file_mime_type(full_pathname)
         if content_type == 'text/x-python':
-            #python file - eval
+            #python file - execute
             return self._execute_python_file(virtual_host, full_pathname, pathname)
 
         return self._stream_binary_file(virtual_host, full_pathname, pathname)
@@ -874,40 +992,30 @@ class IdeaPy:
         """
         serve file or directory listing by self._server_root_dir + server.x_document_root + pathname
         """
-        #concatenate paths and replace duplicated slashes, like // to /
-        full_pathname = os.path.realpath(self._clean_path(self._server_main_root_dir + virtual_host['document_root'] + pathname))
+        file_data = self._locate_file(pathname, virtual_host)
+        if file_data['exists']:
+            if file_data['type'] == 'file':
+                return self._serve_file(virtual_host, file_data['real_pathname'], file_data['pathname'])
+            elif file_data['type'] == 'dir':
+                return self._serve_directory(virtual_host, file_data['real_pathname'], file_data['pathname'])
 
-        if os.path.isfile(full_pathname):
-            return self._serve_file(virtual_host, full_pathname, pathname)
-        elif os.path.isdir(full_pathname):
-            return self._serve_directory(virtual_host, full_pathname, pathname)
-        elif pathname == os.path.sep:
-            return self._serve_directory(virtual_host, full_pathname, pathname)
-
-        # print(virtual_host)
-
-        #not found? try to "redirect" call to not_found_path if set
-        if virtual_host['not_found_path']:
-            full_pathname = self._clean_path(self._server_main_root_dir + virtual_host['not_found_path'])
-            # print(full_pathname)
-
-            if os.path.isfile(full_pathname):
-                return self._serve_file(virtual_host, full_pathname, pathname)
-            elif os.path.isdir(full_pathname):
-                return self._serve_directory(virtual_host, full_pathname, pathname)
-            elif pathname == os.path.sep:
-                return self._serve_directory(virtual_host, full_pathname, pathname)
+        # not found? try to "redirect" call to not_found_document_root if set
+        if virtual_host['not_found_document_root']:
+            file_data = self._locate_file(virtual_host['not_found_document_root'], virtual_host)
+            if file_data['exists']:
+                if file_data['type'] == 'file':
+                    return self._serve_file(virtual_host, file_data['real_pathname'], file_data['pathname'])
+                elif file_data['type'] == 'dir':
+                    return self._serve_directory(virtual_host, file_data['real_pathname'], file_data['pathname'])
 
         raise cherrypy.NotFound()
 
 
     def _serve_by_virtual_host(self, virtual_host:dict, args:tuple, kwargs:dict, path_info:str) -> str:
         if not args:
-            # return self._serve(os.path.sep + 'index.py')
             return self._serve_by_virtual_host2(virtual_host, os.path.sep)
 
         return self._serve_by_virtual_host2(virtual_host, path_info)
-        # return self._serve_by_virtual_host2(virtual_host, os.path.sep + os.path.sep.join(args))
 
 
     def _find_virtual_host_by_netloc(self, netloc:str, port:int) -> Union[dict, None]:
@@ -957,7 +1065,7 @@ class IdeaPy:
             return self._serve_server_static_file(cherrypy.request.path_info)
 
         #try to find proper virtual host using request data
-        parsed_url = url = urlparse(cherrypy.request.base)
+        parsed_url = urlparse(cherrypy.request.base)
 
         virtual_host = self._find_virtual_host_by_netloc(parsed_url.netloc, parsed_url.port)
         if virtual_host:
@@ -978,29 +1086,76 @@ class IdeaPy:
         }
 
         cherrypy.tree.mount(self, self._virtual_host_root, conf)
-        self._log('mounted virtual hosts {vhosts} at {root}'.format(
-            vhosts = str(vhosts),
-            root = self._virtual_host_root
-        ))
+
+        if self.DEBUG_MODE:
+            self._log('mounted virtual hosts {vhosts} at {root}'.format(
+                vhosts = str(vhosts),
+                root = self._virtual_host_root
+            ))
+
+
+    def _module_real_path_from_scope(self, module_name:str, ____ideapy_scope____:dict) -> str:
+        module_pathname = ____ideapy_scope____['____ideapy_file_short_dirname____'] + os.path.sep + self._module_to_pathname(module_name)
+        if os.path.exists(module_pathname):
+            return ____ideapy_scope____['____ideapy_module_parent____'] + '.' + module_name
+
+        return module_name
+
+
+    def _my__import__(self, name, globals=None, locals=None, fromlist=(), level=0):
+        if not hasattr(cherrypy.response, '____ideapy_scope____'):
+            return self._org___import__(name, globals, locals, fromlist, level)
+
+        name = self._module_real_path_from_scope(name, cherrypy.response.____ideapy_scope____)
+
+        return self._org___import__(name, globals, locals, fromlist, level)
+
+
+    def _my_import_module(self, name, package=None):
+        if not hasattr(cherrypy.response, '____ideapy_scope____'):
+            return self._org_import_module(name, package)
+
+        name = self._module_real_path_from_scope(name, cherrypy.response.____ideapy_scope____)
+
+        return self._org_import_module(name, package)
+
+
+    def _install_own_importer(self):
+        self._org___import__ = builtins.__import__
+        self._org_import_module = importlib.import_module
+
+        builtins.__import__ = self._my__import__
+        importlib.import_module = self._my_import_module
 
 
     def start(self):
+        self._log('starting')
+
         if not self._virtual_hosts:
             self.add_virtual_host()
 
         self._mount_virtual_hosts()
-
         cherrypy.engine.start()
+        self._install_own_importer()
+
+        self._log('started')
 
 
     def block(self):
+        self._log('blocking')
         cherrypy.engine.block()
 
 
+    @staticmethod
+    def main():
+        IdeaPy.setup_cherrypy()
+
+        idea = IdeaPy()
+        # idea.add_virtual_host(listen_port=8080)
+        # idea.add_virtual_host(listen_port=8081, ssl_certificate='./certs/wildcard.dealsnoffers.net/bundle.crt', ssl_private_key='./certs/wildcard.dealsnoffers.net/dealsnoffers.net.key')
+        idea.start()
+        idea.block()
+
+
 if __name__ == '__main__':
-    IdeaPy.setup_cherrypy()
-
-    idea = IdeaPy()
-    idea.start()
-    idea.block()
-
+    IdeaPy.main()
