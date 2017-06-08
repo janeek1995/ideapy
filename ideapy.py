@@ -65,6 +65,7 @@ class IdeaPy:
         self._org___import__ = None
         self._org_import_module = None
         self._last_reloaded = int(time.time())
+        self._reloading = False
         self._cached_scopes = {}
         # self._profiler = cProfile.Profile()
 
@@ -428,7 +429,7 @@ class IdeaPy:
                          server_name:str = '',                      # type: str = self._server_name
                          listen_port:Union[int, str] = 8080,
                          listen_ips:List[str] = None,               # type: List[str] = ['0.0.0.0']
-                         server_aliases:List[str] = None,           # type: List[str] = ['localhost']
+                         server_aliases:List[str] = None,           # type: List[str] = ['localhost', 'www', 'm', 'm.www']
                          directory_index:List[str] = None,          # type: List[str] = ['index.py', 'index.html']
                          index_ignore:List[str] = None,             # type: List[str] = ['__pycache__', '*.pyc', '*.key', '*.crt', '*.pem', '.*']
                          ssl_certificate:str = '',
@@ -449,7 +450,7 @@ class IdeaPy:
         if not server_name:
             server_name = self._server_name
         if not server_aliases:
-            server_aliases = ['localhost']
+            server_aliases = ['localhost', 'www', 'm', 'm.www']
 
         server_name = server_name.lower()
 
@@ -483,8 +484,6 @@ class IdeaPy:
         virtual_host['directory_index'] = directory_index
         virtual_host['index_ignore'] = index_ignore
         virtual_host['options'] = {'indexes' : opt_indexes}
-        virtual_host['is_default_server'] = server_name == IdeaPy._DEFAULT_VIRTUAL_HOST_NAME
-        virtual_host['is_default_port'] = isinstance(listen_port, str) and listen_port == '*'
         virtual_host['network_locations'] = network_locations
         virtual_host['ssl_certificate'] = self._locate_file(ssl_certificate, virtual_host, True)['real_pathname'] if ssl_certificate else ''
         virtual_host['ssl_private_key'] = self._locate_file(ssl_private_key, virtual_host, True)['real_pathname'] if ssl_private_key else ''
@@ -685,8 +684,13 @@ class IdeaPy:
 
 
     def _reload_modules(self):
+        if self._reloading:
+            return
+        self._reloading = True
+
         now = int(time.time())
         if now - self._last_reloaded <= self.RELOADER_INTERVAL:
+            self._reloading = False
             return
 
         self._last_reloaded = now
@@ -717,6 +721,7 @@ class IdeaPy:
             try:
                 self._supporting_modules.clear()
             except: pass
+        self._reloading = False
 
 
     def _collect_modules(self):
@@ -1020,22 +1025,10 @@ class IdeaPy:
 
     def _find_virtual_host_by_netloc(self, netloc:str, port:int) -> Union[dict, None]:
         netloc = netloc.lower()
+        netloc_and_port = netloc + ':' + str(port)
 
         for server_name_port, virtual_host in self._virtual_hosts.items():
-            if netloc in virtual_host['network_locations']:
-                return virtual_host
-
-        if not port:
-            #request port is unknown, skip
-            return None
-
-        #virtual host not found? try to find default for such port
-        for server_name_port, virtual_host in self._virtual_hosts.items():
-            if virtual_host['is_default_server'] and not virtual_host['is_default_port'] and virtual_host['listen_port'] == port:
-                    return virtual_host
-
-        for server_name_port, virtual_host in self._virtual_hosts.items():
-            if virtual_host['is_default_server'] and virtual_host['is_default_port']:
+            if netloc in virtual_host['network_locations'] or netloc_and_port in virtual_host['network_locations']:
                 return virtual_host
 
         return None
@@ -1066,8 +1059,23 @@ class IdeaPy:
 
         #try to find proper virtual host using request data
         parsed_url = urlparse(cherrypy.request.base)
+        if parsed_url.port:
+            target_port = parsed_url.port
+        else:
+            target_port = cherrypy.request.local.port
 
-        virtual_host = self._find_virtual_host_by_netloc(parsed_url.netloc, parsed_url.port)
+        virtual_host = self._find_virtual_host_by_netloc(parsed_url.netloc, target_port)
+
+        if self.DEBUG_MODE:
+            self._log(
+                'got',
+                cherrypy.request.wsgi_environ['REQUEST_METHOD'],
+                cherrypy.request.wsgi_environ['HTTP_HOST'] + cherrypy.request.wsgi_environ['REQUEST_URI'],
+                cherrypy.request.wsgi_environ['HTTP_USER_AGENT'],
+                'serving by',
+                str(virtual_host['network_locations'][0])
+            )
+
         if virtual_host:
             # virtual host found
             return self._serve_by_virtual_host(virtual_host, args, kwargs, cherrypy.request.path_info)
