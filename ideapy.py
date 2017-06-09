@@ -191,7 +191,10 @@ class IdeaPy:
             'tools.sessions.on': True,
             'tools.sessions.storage_class': cherrypy.lib.sessions.FileSession,
             'tools.sessions.storage_path': tempfile.gettempdir(),
-            'tools.sessions.timeout': 60,
+
+            #one year
+            'tools.sessions.timeout': 525600,
+
             # we will lock/unlock session manually by cherrypy.session.acquire_lock() and cherrypy.session.release_lock()
             # see http://docs.cherrypy.org/en/latest/pkg/cherrypy.lib.html#locking-sessions
             # 'tools.sessions.locking': 'early',
