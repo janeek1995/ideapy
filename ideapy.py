@@ -25,6 +25,7 @@ import builtins
 import time
 import json
 import pprint
+import gc
 
 from urllib.parse import urlparse
 from wsgiref.handlers import format_date_time
@@ -161,14 +162,29 @@ class IdeaPy:
             }
         }
 
-        self._log('{version} initialized, _server_main_root_dir={_server_main_root_dir}, _server_name={_server_name}'.format(
+        self._log('{version} initializing, _server_main_root_dir={_server_main_root_dir}, _server_name={_server_name}'.format(
             version = IdeaPy._VERSION,
             _server_main_root_dir = self._server_main_root_dir,
             _server_name = self._server_name
         ))
 
+        self._fix_sys_path()
         self._parse_argv()
         self._log('ready, waiting for start()')
+
+
+    def _fix_sys_path(self):
+        # site_packs = os.path.sep + 'site-packages'
+        libs = os.path.sep + 'lib' + os.path.sep
+
+        for index, ipath in enumerate(sys.path):
+            if ipath.startswith(self._server_main_root_dir) and ipath != self._server_main_root_dir and ipath.find(libs) == -1:
+                del sys.path[index]
+                self._log('removed', ipath, 'from sys.path')
+
+        if not self._server_main_root_dir in sys.path:
+            sys.path.append(self._server_main_root_dir)
+            self._log('added', self._server_main_root_dir, 'to sys.path')
 
 
     def _parse_argv(self):
@@ -846,6 +862,8 @@ class IdeaPy:
         except BaseException as x:
             raise x
         finally:
+            self._clear_garbage()
+
             if self.RELOADER:
                 self._collect_modules()
 
@@ -853,6 +871,12 @@ class IdeaPy:
                 self._print_debug_info()
 
         return cherrypy.response.body
+
+
+    def _clear_garbage(self):
+        count_unreachable = gc.collect()
+        if count_unreachable and self.DEBUG_MODE:
+            self._log('gc', str(count_unreachable), 'unreachable objects found')
 
 
     def _profiler_to_file(self, pathname:str):
