@@ -875,6 +875,11 @@ class IdeaPy:
 
     def _clear_garbage(self):
         count_unreachable = gc.collect()
+
+        #hack for gc
+        #https://stackoverflow.com/questions/20489585/python-is-not-freeing-memory (second post)
+        len(gc.get_objects())
+
         if count_unreachable and self.DEBUG_MODE:
             self._log('gc', str(count_unreachable), 'unreachable objects found')
 
