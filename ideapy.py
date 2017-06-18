@@ -207,6 +207,7 @@ class IdeaPy:
     def _parse_conf_json(self):
         if not os.path.exists(self._CONF_FILE_NAME):
             self._log('no {conf_name}'.format(conf_name = self._CONF_FILE_NAME))
+            return
 
         self._log('parsing {conf_name}'.format(conf_name=self._CONF_FILE_NAME))
 
