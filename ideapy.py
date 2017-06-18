@@ -42,10 +42,10 @@ class IdeaPy:
     _LOG_SIGN = 'IDEAPY'
     _PYTHON_MIN_VERSION = (3, 4)
     _CHERRYPY_MIN_VERSION = [8, 1]
-
     _DEFAULT_VIRTUAL_HOST_NAME = '_default_'
-
     _CACHED_SCOPES_TOTAL = 1024
+    _CONF_FILE_NAME = 'ideapy.conf.json'
+
 
     """
     :type _servers: Dict[str, cherrypy._cpserver.Server]
@@ -170,6 +170,7 @@ class IdeaPy:
 
         self._fix_sys_path()
         self._parse_argv()
+        self._parse_conf_json()
         self._log('ready, waiting for start()')
 
 
@@ -195,10 +196,50 @@ class IdeaPy:
         self._log('parsing command line arguments')
 
         virtual_hosts = json.loads(sys.argv[1])
+        new_count = 0
         for ivirtual_host in virtual_hosts:
             self.add_virtual_host(**ivirtual_host)
+            new_count += 1
 
-        self._log('found', str(len(virtual_hosts)), 'virtual host(s)')
+        self._log('found', str(new_count), 'virtual host(s)')
+
+
+    def _parse_conf_json(self):
+        if not os.path.exists(self._CONF_FILE_NAME):
+            self._log('no {conf_name}'.format(conf_name = self._CONF_FILE_NAME))
+
+        self._log('parsing {conf_name}'.format(conf_name=self._CONF_FILE_NAME))
+
+        json_conf = json.loads(open(self._CONF_FILE_NAME).read())
+        assert isinstance(json_conf, dict), 'config must be valid JSON, got {got}'.format(got = str(json_conf))
+
+        allowed_level_0_keys = {
+            'DEBUG_MODE' : bool,
+            'RELOADER': bool,
+            'RELOADER_INTERVAL': int,
+            '_virtual_hosts': False
+        }
+
+        for ikey, ivalue in json_conf.items():
+            if not ikey in allowed_level_0_keys:
+                self._log('unknown level 0 key {key}'.format(key = ikey))
+
+            if allowed_level_0_keys[ikey] is not False:
+                assert isinstance(ivalue, allowed_level_0_keys[ikey]), '{key} must be {type_name}'.format(key = ikey, type_name = str(allowed_level_0_keys[ikey]))
+
+                setattr(self, ikey, ivalue)
+
+        if '_virtual_hosts' in json_conf:
+            assert isinstance(json_conf['_virtual_hosts'], list), '_virtual_hosts must be a list, got {got}'.format(got = str(json_conf['_virtual_hosts']))
+
+            new_count = 0
+            for ivirtual_host in json_conf['_virtual_hosts']:
+                assert isinstance(ivirtual_host, dict), 'virtual host must be a dict, got {got}'.format(got = str(ivirtual_host))
+
+                self.add_virtual_host(**ivirtual_host)
+                new_count += 1
+
+                self._log('found', str(new_count), 'virtual host(s)')
 
 
     @staticmethod
