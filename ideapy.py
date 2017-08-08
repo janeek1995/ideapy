@@ -171,7 +171,16 @@ class IdeaPy:
         self._fix_sys_path()
         self._parse_argv()
         self._parse_conf_json()
+
+        self._log('CherryPy version is {version}'.format(version = cherrypy.__version__))
+        self._log('Python version is {version} ({release})'.format(version = IdeaPy._python_version_to_str(), release = sys.version_info.releaselevel))
         self._log('ready, waiting for start()')
+
+
+    @staticmethod
+    def _python_version_to_str():
+        ver_list = [str(sys.version_info.major), str(sys.version_info.minor), str(sys.version_info.micro)]
+        return '.'.join(ver_list)
 
 
     def _fix_sys_path(self):
@@ -299,8 +308,19 @@ class IdeaPy:
 
 
     def _assert_cherrypy_version(self):
-        cherrypy_version = cherrypy.__version__.split('.')
-        assert int(cherrypy_version[0]) >= IdeaPy._CHERRYPY_MIN_VERSION[0] and int(cherrypy_version[1]) >= IdeaPy._CHERRYPY_MIN_VERSION[1]
+        msg = 'CherryPy {major}.{minor} or newer required (current {current})'.format(
+            major = IdeaPy._CHERRYPY_MIN_VERSION[0],
+            minor = IdeaPy._CHERRYPY_MIN_VERSION[1],
+            current = cherrypy.__version__
+        )
+
+        cherrypy_version = [int(i) for i in cherrypy.__version__.split('.')]
+
+        assert cherrypy_version[0] >= IdeaPy._CHERRYPY_MIN_VERSION[0], msg
+
+        if cherrypy_version[0] == IdeaPy._CHERRYPY_MIN_VERSION[0]:
+            #check revision
+            assert cherrypy_version[1] >= IdeaPy._CHERRYPY_MIN_VERSION[1], msg
 
 
     def _log(self, *objects):
