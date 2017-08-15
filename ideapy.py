@@ -45,6 +45,26 @@ class IdeaPy:
     _DEFAULT_VIRTUAL_HOST_NAME = '_default_'
     _CACHED_SCOPES_TOTAL = 1024
     _CONF_FILE_NAME = 'ideapy.conf.json'
+    _CONF_ALLOWED_0_LVL_KEYS = {
+        'DEBUG_MODE' : bool,
+        'RELOADER': bool,
+        'RELOADER_INTERVAL': int,
+        '_virtual_hosts': False
+    }
+    _CONF_ALLOWED_VHOST_KEYS = {
+        'document_roots': list,
+        'server_name': str,
+        'listen_port': int,
+        'listen_ips': list,
+        'server_aliases': list,
+        'directory_index': list,
+        'index_ignore': list,
+        'ssl_certificate': str,
+        'ssl_private_key': str,
+        'ssl_certificate_chain': str,
+        'opt_indexes': bool,
+        'not_found_document_root': str
+    }
 
 
     """
@@ -169,8 +189,12 @@ class IdeaPy:
         ))
 
         self._fix_sys_path()
-        self._parse_argv()
         self._parse_conf_json()
+
+        if not self._virtual_hosts:
+            self.add_virtual_host()
+
+        self._dump_conf_json()
 
         self._log('CherryPy version is {version}'.format(version = cherrypy.__version__))
         self._log('Python version is {version} ({release})'.format(version = IdeaPy._python_version_to_str(), release = sys.version_info.releaselevel))
@@ -197,45 +221,43 @@ class IdeaPy:
             self._log('added', self._server_main_root_dir, 'to sys.path')
 
 
-    def _parse_argv(self):
-        if len(sys.argv) <= 1:
-            self._log('no command line arguments')
+    def _dump_conf_json(self):
+        if os.path.exists(IdeaPy._CONF_FILE_NAME):
             return
 
-        self._log('parsing command line arguments')
+        conf_data = {}
+        for ikey, ivalue in IdeaPy._CONF_ALLOWED_0_LVL_KEYS.items():
+            conf_data[ikey] = getattr(self, ikey)
 
-        virtual_hosts = json.loads(sys.argv[1])
-        new_count = 0
-        for ivirtual_host in virtual_hosts:
-            self.add_virtual_host(**ivirtual_host)
-            new_count += 1
+        conf_data['_virtual_hosts'] = []
+        for ikey, ivalue in self._virtual_hosts.items():
+            vhost = {}
+            for vkey, vvalue in ivalue.items():
+                if vkey in IdeaPy._CONF_ALLOWED_VHOST_KEYS:
+                    vhost[vkey] = vvalue
 
-        self._log('found', str(new_count), 'virtual host(s)')
+            conf_data['_virtual_hosts'].append(vhost)
+
+        self._log('dumping {conf_name}'.format(conf_name=IdeaPy._CONF_FILE_NAME))
+        open(IdeaPy._CONF_FILE_NAME, 'w').write(json.dumps(conf_data, indent=4, sort_keys=True))
 
 
     def _parse_conf_json(self):
-        if not os.path.exists(self._CONF_FILE_NAME):
-            self._log('no {conf_name}'.format(conf_name = self._CONF_FILE_NAME))
+        if not os.path.exists(IdeaPy._CONF_FILE_NAME):
+            self._log('no {conf_name}'.format(conf_name = IdeaPy._CONF_FILE_NAME))
             return
 
-        self._log('parsing {conf_name}'.format(conf_name=self._CONF_FILE_NAME))
+        self._log('parsing {conf_name}'.format(conf_name=IdeaPy._CONF_FILE_NAME))
 
-        json_conf = json.loads(open(self._CONF_FILE_NAME).read())
+        json_conf = json.loads(open(IdeaPy._CONF_FILE_NAME).read())
         assert isinstance(json_conf, dict), 'config must be valid JSON, got {got}'.format(got = str(json_conf))
 
-        allowed_level_0_keys = {
-            'DEBUG_MODE' : bool,
-            'RELOADER': bool,
-            'RELOADER_INTERVAL': int,
-            '_virtual_hosts': False
-        }
-
         for ikey, ivalue in json_conf.items():
-            if not ikey in allowed_level_0_keys:
+            if not ikey in IdeaPy._CONF_ALLOWED_0_LVL_KEYS:
                 self._log('unknown level 0 key {key}'.format(key = ikey))
 
-            if allowed_level_0_keys[ikey] is not False:
-                assert isinstance(ivalue, allowed_level_0_keys[ikey]), '{key} must be {type_name}'.format(key = ikey, type_name = str(allowed_level_0_keys[ikey]))
+            if IdeaPy._CONF_ALLOWED_0_LVL_KEYS[ikey] is not False:
+                assert isinstance(ivalue, IdeaPy._CONF_ALLOWED_0_LVL_KEYS[ikey]), '{key} must be {type_name}'.format(key = ikey, type_name = str(IdeaPy._CONF_ALLOWED_0_LVL_KEYS[ikey]))
 
                 setattr(self, ikey, ivalue)
 
@@ -245,6 +267,8 @@ class IdeaPy:
             new_count = 0
             for ivirtual_host in json_conf['_virtual_hosts']:
                 assert isinstance(ivirtual_host, dict), 'virtual host must be a dict, got {got}'.format(got = str(ivirtual_host))
+                for ikey, ivalue in ivirtual_host.items():
+                    assert isinstance(ivalue, IdeaPy._CONF_ALLOWED_VHOST_KEYS[ikey]), '{key} must be {type_name}'.format(key=ikey, type_name=str(IdeaPy._CONF_ALLOWED_VHOST_KEYS[ikey]))
 
                 self.add_virtual_host(**ivirtual_host)
                 new_count += 1
@@ -1232,9 +1256,6 @@ class IdeaPy:
 
     def start(self):
         self._log('starting')
-
-        if not self._virtual_hosts:
-            self.add_virtual_host()
 
         self._mount_virtual_hosts()
         cherrypy.engine.start()
