@@ -10,9 +10,20 @@ go to http://localhost:8080/
 Homepage: https://github.com/skazanyNaGlany/ideapy
 """
 
+import os
+
+#activate default Virtualenv if exists
+venv_activate_script = os.path.join('venv', 'bin', 'activate_this.py')
+venv_dir = None
+if os.path.exists(venv_activate_script):
+    with open(venv_activate_script) as f:
+        code = compile(f.read(), venv_activate_script, 'exec')
+        exec(code, {'__file__' : venv_activate_script})
+        venv_dir = os.path.realpath(os.path.dirname(venv_activate_script)).replace(os.path.sep + 'bin', '')
+
+
 import sys
 import cherrypy
-import os
 import math
 import mimetypes
 import importlib
@@ -45,6 +56,7 @@ class IdeaPy:
     _DEFAULT_VIRTUAL_HOST_NAME = '_default_'
     _CACHED_SCOPES_TOTAL = 1024
     _CONF_FILE_NAME = 'ideapy.conf.json'
+    _DEFAULT_VENV = 'venv'
     _CONF_ALLOWED_0_LVL_KEYS = {
         'DEBUG_MODE' : bool,
         'RELOADER': bool,
@@ -195,6 +207,9 @@ class IdeaPy:
             self.add_virtual_host()
 
         self._dump_conf_json()
+
+        if venv_dir:
+            self._log('using virtualenv {venv_dir}'.format(venv_dir=venv_dir))
 
         self._log('CherryPy version is {version}'.format(version = cherrypy.__version__))
         self._log('Python version is {version} ({release})'.format(version = IdeaPy._python_version_to_str(), release = sys.version_info.releaselevel))
