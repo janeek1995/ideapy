@@ -226,6 +226,8 @@ class IdeaPy:
         self._log('Python version is {version} ({release})'.format(version = IdeaPy._python_version_to_str(), release = sys.version_info.releaselevel))
         self._log('RELOADER is', 'ON' if self.RELOADER else 'OFF')
         self._log('OWN_IMPORTER is', 'ON' if self.OWN_IMPORTER else 'OFF')
+        self._log('RELOADER_INTERVAL is', str(self.RELOADER_INTERVAL))
+        self._log('COLLECTOR_INTERVAL is', str(self.COLLECTOR_INTERVAL))
         self._log('ready, waiting for start()')
 
 
