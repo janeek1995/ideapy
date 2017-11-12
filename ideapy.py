@@ -1005,7 +1005,7 @@ class IdeaPy:
         content_type = mimetypes.guess_type(pathname)[0]
         if not content_type:
             #to avoid None
-            content_type = ''
+            content_type = 'text/plain'
 
         return content_type
 
