@@ -947,7 +947,7 @@ class IdeaPy:
             self._reload_modules()
 
         if self.DEBUG_MODE:
-            self._log('executing', full_pathname)
+            self._log('executing', pathname, 'as', full_pathname)
 
         cherrypy.response.____ideapy_scope____ = self._build_scope(pathname, full_pathname)
 
