@@ -221,6 +221,7 @@ class IdeaPy:
 
         self._log('CherryPy version is {version}'.format(version = cherrypy.__version__))
         self._log('Python version is {version} ({release})'.format(version = IdeaPy._python_version_to_str(), release = sys.version_info.releaselevel))
+        self._log('RELOADER is', 'ON' if self.RELOADER else 'OFF')
         self._log('OWN_IMPORTER is', 'ON' if self.OWN_IMPORTER else 'OFF')
         self._log('ready, waiting for start()')
 
