@@ -280,6 +280,7 @@ class IdeaPy:
         for ikey, ivalue in json_conf.items():
             if not ikey in IdeaPy._CONF_ALLOWED_0_LVL_KEYS:
                 self._log('unknown level 0 key {key}'.format(key = ikey))
+                continue
 
             if IdeaPy._CONF_ALLOWED_0_LVL_KEYS[ikey] is not False:
                 assert isinstance(ivalue, IdeaPy._CONF_ALLOWED_0_LVL_KEYS[ikey]), '{key} must be {type_name}'.format(key = ikey, type_name = str(IdeaPy._CONF_ALLOWED_0_LVL_KEYS[ikey]))
