@@ -1211,10 +1211,13 @@ class IdeaPy:
             target_port = cherrypy.request.local.port
 
         virtual_host = self._find_virtual_host_by_netloc(parsed_url.netloc, target_port)
+        if not virtual_host:
+            raise cherrypy.NotFound()
 
         if self.DEBUG_MODE:
             http_host = (cherrypy.request.wsgi_environ['HTTP_HOST'] if 'HTTP_HOST' in cherrypy.request.wsgi_environ else '<no HTTP_HOST>')
             http_user_agent = (cherrypy.request.wsgi_environ['HTTP_USER_AGENT'] if 'HTTP_USER_AGENT' in cherrypy.request.wsgi_environ else '<no HTTP_USER_AGENT>')
+
             self._log(
                 'got',
                 cherrypy.request.wsgi_environ['REQUEST_METHOD'],
@@ -1225,11 +1228,7 @@ class IdeaPy:
                 str(virtual_host['network_locations'][0])
             )
 
-        if virtual_host:
-            # virtual host found
-            return self._serve_by_virtual_host(virtual_host, args, kwargs, cherrypy.request.path_info)
-
-        raise cherrypy.NotFound()
+        return self._serve_by_virtual_host(virtual_host, args, kwargs, cherrypy.request.path_info)
 
 
     def _mount_virtual_hosts(self):
