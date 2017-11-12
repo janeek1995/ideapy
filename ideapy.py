@@ -1165,7 +1165,7 @@ class IdeaPy:
         return self._serve_by_virtual_host2(virtual_host, path_info)
 
 
-    def _find_virtual_host_by_netloc(self, netloc:str, port:int) -> Union[dict, None]:
+    def _find_virtual_host_by_netloc(self, netloc:str, port:int) -> Optional[dict]:
         netloc = netloc.lower()
         netloc_and_port = netloc + ':' + str(port)
 
