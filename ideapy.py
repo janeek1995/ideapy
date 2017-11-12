@@ -1030,7 +1030,7 @@ class IdeaPy:
             self._log('streaming', full_pathname, content_type)
 
         cherrypy.response.headers['Content-Type'] = content_type
-        cherrypy.response.headers['Cache-Control'] = 'max-age=86400'            #cache for 24h
+        cherrypy.response.headers['Cache-Control'] = 'max-age=3600'            #cache for 1h
         cherrypy.response.headers['Accept-Ranges'] = 'bytes'
         cherrypy.response.headers['Last-Modified'] = modified
         cherrypy.response.headers['Connection'] = 'close'
