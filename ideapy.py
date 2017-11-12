@@ -48,6 +48,7 @@ class IdeaPy:
     DEBUG_MODE = False
     RELOADER = True
     RELOADER_INTERVAL = 3
+    OWN_IMPORTER = True
 
     _VERSION = '0.1.6'
     _LOG_SIGN = 'IDEAPY'
@@ -62,6 +63,7 @@ class IdeaPy:
         'DEBUG_MODE' : bool,
         'RELOADER': bool,
         'RELOADER_INTERVAL': int,
+        'OWN_IMPORTER': bool,
         '_virtual_hosts': False
     }
     _CONF_ALLOWED_VHOST_KEYS = {
@@ -219,6 +221,7 @@ class IdeaPy:
 
         self._log('CherryPy version is {version}'.format(version = cherrypy.__version__))
         self._log('Python version is {version} ({release})'.format(version = IdeaPy._python_version_to_str(), release = sys.version_info.releaselevel))
+        self._log('OWN_IMPORTER is', 'ON' if self.OWN_IMPORTER else 'OFF')
         self._log('ready, waiting for start()')
 
 
@@ -915,7 +918,7 @@ class IdeaPy:
 
         scope_data = {
             '__builtins__': {
-                '__import__': self._my__import__
+                '__import__': self._my__import__ if self.OWN_IMPORTER else self._org___import__
             },
             '____ideapy____': self,
             '____ideapy_file____': pathname,
@@ -1271,8 +1274,12 @@ class IdeaPy:
 
 
     def _install_own_importer(self):
+        #needed by scope
         self._org___import__ = builtins.__import__
         self._org_import_module = importlib.import_module
+
+        if not self.OWN_IMPORTER:
+            return
 
         builtins.__import__ = self._my__import__
         importlib.import_module = self._my_import_module
