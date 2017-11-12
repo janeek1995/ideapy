@@ -48,6 +48,7 @@ class IdeaPy:
     DEBUG_MODE = False
     RELOADER = True
     RELOADER_INTERVAL = 3
+    COLLECTOR_INTERVAL = 3
     OWN_IMPORTER = True
 
     _VERSION = '0.1.6'
@@ -101,8 +102,11 @@ class IdeaPy:
         self._org___import__ = None
         self._org_import_module = None
         self._last_reloaded = int(time.time())
+        self._last_collected = 0
         self._reloading = False
+        self._collecting = False
         self._cached_scopes = {}
+        self._builtin_modules = []
 
         self._list_html_template = """
         <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
@@ -213,6 +217,7 @@ class IdeaPy:
             self.add_virtual_host()
 
         self._dump_conf_json()
+        self._collect_builtin_modules()
 
         if venv_dir:
             self._log('using virtualenv {venv_dir}'.format(venv_dir=venv_dir))
@@ -262,6 +267,11 @@ class IdeaPy:
 
         self._log('dumping {conf_name}'.format(conf_name=IdeaPy._CONF_FILE_NAME))
         open(IdeaPy._CONF_FILE_NAME, 'w').write(json.dumps(conf_data, indent=4, sort_keys=True))
+
+
+    def _collect_builtin_modules(self):
+        #make them unique
+        self._builtin_modules = list(set(list(sys.modules.keys()) + list(sys.builtin_module_names)))
 
 
     def _parse_conf_json(self):
@@ -844,20 +854,40 @@ class IdeaPy:
 
 
     def _collect_modules(self):
-        for module_name in list(sys.modules.keys()):
+        if self._collecting:
+            return
+        self._collecting = True
+
+        now = int(time.time())
+        if now - self._last_collected <= self.COLLECTOR_INTERVAL:
+            self._collecting = False
+            return
+
+        self._last_collected = now
+
+        for module_name in sys.modules.keys():
+            if module_name in self._builtin_modules or module_name in sys.builtin_module_names:
+                continue
+
             readable = False
 
             module_file_full_pathname = module_name.replace('.', os.path.sep)
+            if module_file_full_pathname in self._supporting_modules:
+                continue
+
             if os.path.exists(module_file_full_pathname):
                 #directory
                 readable = True
             else:
                 module_file_full_pathname = module_name.replace('.', os.path.sep) + '.py'
+                if module_file_full_pathname in self._supporting_modules:
+                    continue
+
                 if os.path.exists(module_file_full_pathname):
                     #file
                     readable = True
 
-            if readable and not module_file_full_pathname in self._supporting_modules:
+            if readable:
                 if self.DEBUG_MODE:
                     self._log('supporting', module_file_full_pathname)
 
@@ -865,6 +895,8 @@ class IdeaPy:
                     'module' : module_name,
                     'mtime' : os.path.getmtime(module_file_full_pathname)
                 }
+
+        self._collecting = False
 
 
     def _print_debug_info(self):
@@ -951,24 +983,18 @@ class IdeaPy:
 
         cherrypy.response.____ideapy_scope____ = self._build_scope(pathname, full_pathname)
 
-        try:
-            _locals = locals()
+        _locals = locals()
 
-            # inject __file__ so the interpreter will know which file is executing currently
-            _locals['__file__'] = full_pathname
+        # inject __file__ so the interpreter will know which file is executing currently
+        _locals['__file__'] = full_pathname
 
-            # exec(open(full_pathname).read(), locals(), locals())
-            exec(open(full_pathname).read(), _locals, _locals)
-        except BaseException as x:
-            raise x
-        finally:
-            self._clear_garbage()
+        exec(open(full_pathname).read(), _locals, _locals)
 
-            if self.RELOADER:
-                self._collect_modules()
+        if self.RELOADER:
+            self._collect_modules()
 
-            if self.DEBUG_MODE:
-                self._print_debug_info()
+        if self.DEBUG_MODE:
+            self._print_debug_info()
 
         return cherrypy.response.body
 
