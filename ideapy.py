@@ -1262,9 +1262,12 @@ class IdeaPy:
         if not hasattr(cherrypy.response, '____ideapy_scope____'):
             return self._org___import__(name, globals, locals, fromlist, level)
 
-        name = self._module_real_path_from_scope(name, cherrypy.response.____ideapy_scope____)
+        processed_name = self._module_real_path_from_scope(name, cherrypy.response.____ideapy_scope____)
 
-        return self._org___import__(name, globals, locals, fromlist, level)
+        if self.DEBUG_MODE:
+            self._log('importing', name, 'as', processed_name)
+
+        return self._org___import__(processed_name, globals, locals, fromlist, level)
 
 
     def _my_import_module(self, name, package=None):
