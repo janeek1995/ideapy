@@ -101,7 +101,6 @@ class IdeaPy:
         self._last_reloaded = int(time.time())
         self._reloading = False
         self._cached_scopes = {}
-        # self._profiler = cProfile.Profile()
 
         self._list_html_template = """
         <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
