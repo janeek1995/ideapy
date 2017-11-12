@@ -1213,11 +1213,14 @@ class IdeaPy:
         virtual_host = self._find_virtual_host_by_netloc(parsed_url.netloc, target_port)
 
         if self.DEBUG_MODE:
+            http_host = (cherrypy.request.wsgi_environ['HTTP_HOST'] if 'HTTP_HOST' in cherrypy.request.wsgi_environ else '<no HTTP_HOST>')
+            http_user_agent = (cherrypy.request.wsgi_environ['HTTP_USER_AGENT'] if 'HTTP_USER_AGENT' in cherrypy.request.wsgi_environ else '<no HTTP_USER_AGENT>')
             self._log(
                 'got',
                 cherrypy.request.wsgi_environ['REQUEST_METHOD'],
-                cherrypy.request.wsgi_environ['HTTP_HOST'] + cherrypy.request.wsgi_environ['REQUEST_URI'],
-                cherrypy.request.wsgi_environ['HTTP_USER_AGENT'],
+                http_host,
+                cherrypy.request.wsgi_environ['REQUEST_URI'],
+                http_user_agent,
                 'serving by',
                 str(virtual_host['network_locations'][0])
             )
