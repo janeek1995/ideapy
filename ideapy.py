@@ -990,13 +990,20 @@ class IdeaPy:
         # inject __file__ so the interpreter will know which file is executing currently
         _locals['__file__'] = full_pathname
 
-        exec(open(full_pathname).read(), _locals, _locals)
+        exc = None
+        try:
+            exec(open(full_pathname).read(), _locals, _locals)
+        except BaseException as x:
+            exc = x
 
         if self.RELOADER:
             self._collect_modules()
 
         if self.DEBUG_MODE:
             self._print_debug_info()
+
+        if exc:
+            raise exc
 
         return cherrypy.response.body
 
