@@ -37,10 +37,11 @@ import time
 import json
 import pprint
 import gc
+import urllib
 
 from urllib.parse import urlparse
 from wsgiref.handlers import format_date_time
-from typing import List, Dict, Union, Optional
+from typing import List, Dict, Union, Optional, Callable
 from collections import OrderedDict
 
 
@@ -1313,6 +1314,49 @@ class IdeaPy:
 
         builtins.__import__ = self._my__import__
         importlib.import_module = self._my_import_module
+
+
+    def _start_response(self, status, response_headers, exc_info=None):
+        if exc_info is not None:
+            raise exc_info[1].with_traceback(exc_info[2])
+
+        cherrypy.response.status = status
+
+        for name, value in response_headers:
+            cherrypy.response.headers[name] = value
+
+
+    def run_wsgi_app(self, wsgi_app:Callable, query_param_name:str = '/?q='):
+        request_uri = cherrypy.request.wsgi_environ['REQUEST_URI']
+
+        query_pos = request_uri.find(query_param_name)
+        if query_pos != -1:
+            new_request_uri = request_uri[query_pos + 4:]
+        else:
+            new_request_uri = '/'
+
+        if not new_request_uri:
+            new_request_uri = '/'
+
+        parsed_url = urllib.parse.urlparse(new_request_uri)
+
+        new_wsgi_environ = cherrypy.request.wsgi_environ.copy()
+        new_wsgi_environ['REQUEST_URI'] = new_request_uri
+        new_wsgi_environ['PATH_INFO'] = parsed_url.path
+        new_wsgi_environ['QUERY_STRING'] = parsed_url.query
+
+        result = wsgi_app(new_wsgi_environ, self._start_response)
+        if not result:
+            result = ''
+
+        if isinstance(result, bytes):
+            cherrypy.response.body = result
+        elif isinstance(result, list):
+            cherrypy.response.body = result
+        elif isinstance(result, str):
+            cherrypy.response.body = bytes(result, 'utf8')
+        else:
+            cherrypy.response.body = result
 
 
     def start(self):
