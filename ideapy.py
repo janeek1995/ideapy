@@ -869,8 +869,17 @@ class IdeaPy:
 
         self._last_collected = now
 
-        for module_name in sys.modules.keys():
+        for module_name, module_object in sys.modules.items():
             if module_name in self._builtin_modules or module_name in sys.builtin_module_names:
+                continue
+
+            if hasattr(module_object, '__file__') and module_object.__file__.find('/site-packages/') != -1:
+                #new builtin module
+                self._builtin_modules.append(module_name)
+
+                if self.DEBUG_MODE:
+                    self._log('new builtin module {name} discovered'.format(name=module_name))
+
                 continue
 
             readable = False
