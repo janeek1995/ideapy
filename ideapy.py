@@ -38,6 +38,8 @@ import json
 import pprint
 import gc
 import urllib
+import io
+import urllib.parse
 
 from urllib.parse import urlparse
 from wsgiref.handlers import format_date_time
@@ -1354,6 +1356,14 @@ class IdeaPy:
         new_wsgi_environ['REQUEST_URI'] = new_request_uri
         new_wsgi_environ['PATH_INFO'] = parsed_url.path
         new_wsgi_environ['QUERY_STRING'] = parsed_url.query
+
+        request_body = cherrypy.request.body.read()
+        if request_body:
+            #found raw request body, pass it
+            new_wsgi_environ['wsgi.input'] = io.BytesIO(request_body)
+        else:
+            #hack - convert body_params to raw request body
+            new_wsgi_environ['wsgi.input'] = io.StringIO(urllib.parse.urlencode(cherrypy.request.body_params))
 
         result = wsgi_app(new_wsgi_environ, self._wsgi_start_response)
         if not result:
