@@ -1326,7 +1326,7 @@ class IdeaPy:
         importlib.import_module = self._my_import_module
 
 
-    def _start_response(self, status, response_headers, exc_info=None):
+    def _wsgi_start_response(self, status, response_headers, exc_info=None):
         if exc_info is not None:
             raise exc_info[1].with_traceback(exc_info[2])
 
@@ -1355,7 +1355,7 @@ class IdeaPy:
         new_wsgi_environ['PATH_INFO'] = parsed_url.path
         new_wsgi_environ['QUERY_STRING'] = parsed_url.query
 
-        result = wsgi_app(new_wsgi_environ, self._start_response)
+        result = wsgi_app(new_wsgi_environ, self._wsgi_start_response)
         if not result:
             result = ''
 
