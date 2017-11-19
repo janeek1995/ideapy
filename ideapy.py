@@ -65,6 +65,7 @@ class IdeaPy:
         'DEBUG_MODE' : bool,
         'RELOADER': bool,
         'RELOADER_INTERVAL': int,
+        'COLLECTOR_INTERVAL': int,
         'OWN_IMPORTER': bool,
         '_virtual_hosts': False
     }
