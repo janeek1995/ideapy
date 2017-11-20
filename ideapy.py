@@ -63,6 +63,7 @@ class IdeaPy:
     _CONF_FILE_NAME = 'ideapy.conf.json'
     _DEFAULT_VENV = 'venv'
     _MAIN_FAVICON = '/favicon.ico'
+    _METHODS_WITH_BODIES = ('POST', 'PUT', 'PATCH')
     _CONF_ALLOWED_0_LVL_KEYS = {
         'DEBUG_MODE' : bool,
         'RELOADER': bool,
@@ -1357,7 +1358,11 @@ class IdeaPy:
         new_wsgi_environ['PATH_INFO'] = parsed_url.path
         new_wsgi_environ['QUERY_STRING'] = parsed_url.query
 
-        request_body = cherrypy.request.body.read()
+        if cherrypy.request.wsgi_environ['REQUEST_METHOD'] in self._METHODS_WITH_BODIES:
+            request_body = cherrypy.request.body.read()
+        else:
+            request_body = None
+
         if request_body:
             #found raw request body, pass it
             new_wsgi_environ['wsgi.input'] = io.BytesIO(request_body)
