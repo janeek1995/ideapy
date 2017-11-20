@@ -1019,7 +1019,15 @@ class IdeaPy:
         if exc:
             raise exc
 
-        return cherrypy.response.body
+        if 'stream_function' in cherrypy.response.____ideapy_scope____:
+            #for Chrome and IE
+            cherrypy.response.headers['X-Content-Type-Options'] = 'nosniff'
+
+            cherrypy.response.stream = True
+
+            return cherrypy.response.____ideapy_scope____['stream_function']()
+        else:
+            return cherrypy.response.body
 
 
     def _clear_garbage(self):
@@ -1382,6 +1390,10 @@ class IdeaPy:
             cherrypy.response.body = bytes(result, 'utf8')
         else:
             cherrypy.response.body = result
+
+
+    def stream(self, stream_function):
+        cherrypy.response.____ideapy_scope____['stream_function'] = stream_function
 
 
     def start(self):
