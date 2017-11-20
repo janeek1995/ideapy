@@ -1,6 +1,6 @@
 Metadata-Version: 1.1
 Name: ideapy
-Version: 0.1.4
+Version: 0.1.6
 Summary: IdeaPy is a simple WWW server built on top of CherryPy, with Python code execution feature
 Home-page: https://github.com/skazanyNaGlany/ideapy
 Author: Paweł Kacperski
