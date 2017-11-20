@@ -1,11 +1,15 @@
 import cherrypy
 
+
+# http://localhost:8080/examples/session_app
+
+
 #to run this example, make sure CherryPy's session is initialized
 #by setting:
 # 'tools.sessions.on': True,
 # 'tools.sessions.storage_class': cherrypy.lib.sessions.FileSession,
 # 'tools.sessions.storage_path': tempfile.gettempdir(),
-#or simply run BerryPy.setup_cherrypy()
+
 
 if not 'test_var' in cherrypy.session:
     cherrypy.session['test_var'] = 0
