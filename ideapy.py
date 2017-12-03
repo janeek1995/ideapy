@@ -84,6 +84,8 @@ class IdeaPy:
     _DEFAULT_VIRTUAL_HOST_NAME = '_default_'
     _CACHED_SCOPES_TOTAL = 1024
     _CONF_FILE_NAME = 'ideapy.conf.json'
+    _CERT_FILENAME = 'ideapy.' + _VERSION + '.cert.pem'
+    _CERT_KEY_FILENAME = 'ideapy.' + _VERSION + '.key.pem'
     _DEFAULT_VENV = 'venv'
     _MAIN_FAVICON = '/favicon.ico'
     _METHODS_WITH_BODIES = ('POST', 'PUT', 'PATCH')
@@ -107,7 +109,8 @@ class IdeaPy:
         'ssl_private_key': str,
         'ssl_certificate_chain': str,
         'opt_indexes': bool,
-        'not_found_document_root': str
+        'not_found_document_root': str,
+        'secure': bool
     }
 
 
@@ -232,12 +235,101 @@ class IdeaPy:
             }
         }
 
+        self._ssl_certificate = self._clean_strings("""
+        -----BEGIN CERTIFICATE-----
+        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
+        -----END CERTIFICATE-----
+        """)
+
+        self._ssl_certificate_key = self._clean_strings("""
+        -----BEGIN RSA PRIVATE KEY-----
+        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
+        -----END RSA PRIVATE KEY-----
+        """)
+
         self._log('{version} initializing, _server_main_root_dir={_server_main_root_dir}, _server_name={_server_name}'.format(
             version = IdeaPy._VERSION,
             _server_main_root_dir = self._server_main_root_dir,
             _server_name = self._server_name
         ))
 
+        self._save_self_signed_cert()
         self._fix_sys_path()
         self._parse_conf_json()
 
@@ -257,6 +349,33 @@ class IdeaPy:
         self._log('RELOADER_INTERVAL is', str(self.RELOADER_INTERVAL))
         self._log('COLLECTOR_INTERVAL is', str(self.COLLECTOR_INTERVAL))
         self._log('ready, waiting for start()')
+
+
+    def _save_self_signed_cert(self):
+        tempdir = tempfile.gettempdir()
+
+        self._cert_pathname = os.path.join(tempdir, self._CERT_FILENAME)
+        self._key_pathname = os.path.join(tempdir, self._CERT_KEY_FILENAME)
+
+        self._log('saving self-signed SSL certificate in {tempdir}'.format(tempdir=tempdir))
+        self._log('{pathname}'.format(pathname=self._cert_pathname))
+        self._log('{pathname}'.format(pathname=self._key_pathname))
+
+        if not os.path.exists(self._cert_pathname):
+            with open(self._cert_pathname, 'w') as f:
+                f.write(self._ssl_certificate)
+
+        if not os.path.exists(self._key_pathname):
+            with open(self._key_pathname, 'w') as f:
+                f.write(self._ssl_certificate_key)
+
+
+    def _clean_strings(self, strings:str) -> str:
+        result = ''
+        for istr in strings.split("\n"):
+            result += istr.strip() + "\n"
+
+        return result.strip()
 
 
     @staticmethod
@@ -496,7 +615,8 @@ class IdeaPy:
                                      ssl_private_key,
                                      ssl_certificate_chain:str,
                                      opt_indexes:bool,
-                                     not_found_document_root:str = None):
+                                     not_found_document_root:str = None,
+                                     secure:bool = False):
         assert isinstance(document_roots, list), 'document_roots must be a list of strings'
         assert document_roots, 'document_roots must be non-empty (full pathname)'
 
@@ -539,6 +659,7 @@ class IdeaPy:
         assert isinstance(ssl_private_key, str)
         assert isinstance(ssl_certificate_chain, str)
         assert isinstance(opt_indexes, bool)
+        assert isinstance(secure, bool)
 
         if not_found_document_root:
             assert isinstance(not_found_document_root, str), 'not_found_document_root must be a string, got={not_found_document_root}'.format(not_found_document_root = str(not_found_document_root))
@@ -604,7 +725,8 @@ class IdeaPy:
                          ssl_private_key:str = '',
                          ssl_certificate_chain:str = '',
                          opt_indexes:bool = False,
-                         not_found_document_root:str = '/'
+                         not_found_document_root:str = '/',
+                         secure:bool = False
                          ) -> dict:
         #setup defaults
         if not document_roots:
@@ -639,7 +761,8 @@ class IdeaPy:
             ssl_private_key,
             ssl_certificate_chain,
             opt_indexes,
-            not_found_document_root
+            not_found_document_root,
+            secure
         )
 
         #collect listen IPs and merge with listen port (if port does not exists in IP)
@@ -657,6 +780,13 @@ class IdeaPy:
         virtual_host['ssl_private_key'] = self._locate_file(ssl_private_key, virtual_host, True)['real_pathname'] if ssl_private_key else ''
         virtual_host['ssl_certificate_chain'] = self._locate_file(ssl_certificate_chain, virtual_host)['real_pathname'] if ssl_certificate_chain else ''
         virtual_host['not_found_document_root'] = not_found_document_root
+        virtual_host['secure'] = secure
+
+        if secure:
+            if not virtual_host['ssl_certificate']:
+                virtual_host['ssl_certificate'] = self._cert_pathname
+            if not virtual_host['ssl_private_key']:
+                virtual_host['ssl_private_key'] = self._key_pathname
 
         #subscribe servers (ip:port)
         self._add_servers(
