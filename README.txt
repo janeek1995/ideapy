@@ -15,6 +15,8 @@ Features
 - reloading modified .py files, not need to
   restart the interpreter
 - unlimited number of virtual hosts
+- minimal WSGI application support (can run WSGI
+  application)
 - one dependency: CherryPy 8.1+
 
 
