@@ -1,31 +1,35 @@
-============================
-IdeaPy (Idea for Python)
-============================
+==========================================================
+IdeaPy (c) 2017 Paweł Kacperski (screamingbox@gmail.com)
+==========================================================
 
-IdeaPy is a simple WWW server built on top of CherryPy, with Python code execution feature.
+IdeaPy is a simple WWW server built on top of
+CherryPy, with Python code execution feature.
+Requires Python 3.4+ and CherryPy 8.1+
+
 
 
 Features
-----------------------------------
-- ability to execute Python code
-just like Apache2 + mod_php
-- all static files are streamed
-by default
-- you can add unlimited
-number of virtual hosts
-- one dependency: CherryPy
+----------------------------------------------------------
+- ability to execute Python code just like
+  Apache2 + mod_php
+- reloading modified .py files, not need to
+  restart the interpreter
+- unlimited number of virtual hosts
+- one dependency: CherryPy 8.1+
+
 
 
 Example: "Hello World" in a IdeaPy
-----------------------------------
-python3 -m ideapy
+----------------------------------------------------------
+python3 ideapy.py
 
 go to http://localhost:8888/examples/default_page/
 or http://localhost:8888/ to view directory listing
 
 
+
 Own usage
-----------------------------------
+----------------------------------------------------------
 
 import ideapy
 
@@ -36,8 +40,9 @@ idea.start()
 idea.block()
 
 
+
 Advanced usage
-----------------------------------
+----------------------------------------------------------
 import ideapy
 
 IdeaPy.setup_cherrypy()     #optional
@@ -83,6 +88,7 @@ idea.start()
 idea.block()
 
 
+
 Homepage
-----------------------------------
+----------------------------------------------------------
 https://github.com/skazanyNaGlany/ideapy
