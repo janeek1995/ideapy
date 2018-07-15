@@ -1529,7 +1529,12 @@ class IdeaPy:
             new_wsgi_environ['wsgi.input'] = io.BytesIO(request_body)
         else:
             #hack - convert body_params to raw request body
-            new_wsgi_environ['wsgi.input'] = io.StringIO(urllib.parse.urlencode(cherrypy.request.body_params))
+            try:
+                body_params = cherrypy.request.body_params
+            except AttributeError as x:
+                body_params = cherrypy.request.body.params
+
+            new_wsgi_environ['wsgi.input'] = io.StringIO(urllib.parse.urlencode(body_params))
 
         result = wsgi_app(new_wsgi_environ, self._wsgi_start_response)
         if not result:
